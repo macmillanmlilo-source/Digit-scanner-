@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Deriv Digit Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: one column tool. Controls on top, headline result, ranked table, then a per-market digit chart. */
+:root {
+  --bg: #f3f5f4;
+  --surface: #ffffff;
+  --surface-2: #e9eeec;
+  --fg: #14201c;
+  --muted: #5d6d67;
+  --line: #d3dcd8;
+  --accent: #0b7a5c;
+  --accent-fg: #ffffff;
+  --bar: #0b7a5c;
+  --bar-recent: #b7c9c2;
+  --warn: #b4690e;
+  --bad: #b3261e;
+  --font-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1513;
+    --surface: #151e1b;
+    --surface-2: #1d2824;
+    --fg: #e5eeea;
+    --muted: #8fa39b;
+    --line: #28342f;
+    --accent: #3fd0a3;
+    --accent-fg: #06251b;
+    --bar: #3fd0a3;
+    --bar-recent: #4b5f57;
+    --warn: #e0a24a;
+    --bad: #f0857d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1513;
+  --surface: #151e1b;
+  --surface-2: #1d2824;
+  --fg: #e5eeea;
+  --muted: #8fa39b;
+  --line: #28342f;
+  --accent: #3fd0a3;
+  --accent-fg: #06251b;
+  --bar: #3fd0a3;
+  --bar-recent: #4b5f57;
+  --warn: #e0a24a;
+  --bad: #f0857d;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; }
+h1 { font-size: 1.6rem; line-height: 1.15; }
+h2 { font-size: 1.05rem; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 62ch; }
+.mono, td.num, .stat b { font-family: var(--font-data); font-variant-numeric: tabular-nums; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+label.field, .label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+input[type="number"], input[type="text"] {
+  font: inherit;
+  font-family: var(--font-data);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  width: 9.5rem;
+}
+button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--fg);
+  padding: 8px 12px;
+}
+button:hover { border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.preset[aria-pressed="true"], .toggle[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.scan-btn {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+  padding: 12px 28px;
+  min-width: 9rem;
+}
+.scan-btn[disabled] { opacity: 0.6; cursor: progress; }
+.live-btn { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; padding: 12px 22px; }
+.hero .copy { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.live-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-data); font-size: 0.72rem; letter-spacing: 0.08em;
+  color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 2px 10px;
+}
+.live-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+@media (prefers-reduced-motion: no-preference) {
+  .live-pill i { animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+}
+details.more > summary {
+  cursor: pointer; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; color: var(--fg); font-family: var(--font-display); font-weight: 700;
+}
+details.more[open] > summary { margin-bottom: 16px; }
+details.more > .panel + .panel { margin-top: 16px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg);
+  font-size: 0.9rem;
+}
+.chip input { accent-color: var(--accent); margin: 0; }
+.chip:has(input:checked) { border-color: var(--accent); background: var(--surface-2); }
+
+details summary { cursor: pointer; color: var(--muted); font-size: 0.85rem; }
+details .row { margin-top: 10px; }
+
+.status { color: var(--muted); font-size: 0.9rem; min-height: 1.4em; }
+.status.err { color: var(--bad); }
+
+/* Result headline */
+.hero {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px 18px;
+  align-items: center;
+}
+.digit-badge {
+  font-family: var(--font-data);
+  font-weight: 600;
+  font-size: 3.6rem;
+  line-height: 1;
+  width: 5.2rem; height: 5.2rem;
+  display: grid; place-items: center;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 10px;
+}
+.hero h2 { font-size: 1.3rem; }
+.hero .meta { color: var(--muted); font-family: var(--font-data); font-size: 0.85rem; margin-top: 4px; }
+.tag {
+  display: inline-block; font-size: 0.75rem; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--line); margin-left: 6px; vertical-align: middle;
+}
+.tag.strong { border-color: var(--accent); color: var(--accent); }
+.tag.noise { color: var(--warn); border-color: var(--warn); }
+@media (max-width: 560px) {
+  .hero { grid-template-columns: auto 1fr; }
+  .hero .copy { grid-column: 1 / -1; }
+}
+
+/* Table */
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 560px; }
+th {
+  text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); font-weight: 600; padding: 6px 10px; border-bottom: 1px solid var(--line);
+}
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); }
+td.num, th.num { text-align: right; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--surface-2); }
+tbody tr[aria-selected="true"] { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.digit-cell { font-family: var(--font-data); font-weight: 600; font-size: 1.05rem; }
+.err-cell { color: var(--bad); }
+
+/* Chart */
+.chart {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 6px;
+  align-items: end;
+  height: 220px;
+  position: relative;
+  padding-top: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.chart .base {
+  position: absolute; left: 0; right: 0; border-top: 1px dashed var(--muted); pointer-events: none;
+}
+.chart .base span {
+  position: absolute; right: 0; top: -1.3em; font-size: 0.7rem; color: var(--muted); font-family: var(--font-data);
+}
+.dcol { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; align-items: center; min-width: 0; }
+.bars { display: flex; align-items: flex-end; gap: 2px; width: 100%; flex: 1; justify-content: center; }
+.bar { width: 42%; max-width: 26px; background: var(--bar); border-radius: 3px 3px 0 0; min-height: 2px; }
+.bar.recent { background: var(--bar-recent); }
+.bar.top { box-shadow: 0 0 0 2px var(--fg); }
+.pct { font-family: var(--font-data); font-size: 0.68rem; color: var(--muted); margin-bottom: 3px; }
+.labels { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; margin-top: 6px; text-align: center; }
+.labels div { font-family: var(--font-data); font-weight: 600; }
+.labels small { display: block; color: var(--muted); font-weight: 400; font-size: 0.68rem; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.stat { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat span { display: block; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.stat b { font-size: 1.15rem; }
+
+.note { color: var(--muted); font-size: 0.82rem; max-width: 70ch; }
+.empty { color: var(--muted); padding: 8px 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .bar { transition: height 0.35s ease; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Deriv Digit Scanner</h1>
+    <p class="sub">Finds the one market and digit worth trying for Matches. Scan once, or go live and it keeps updating as ticks arrive. It only reads ticks and never places a trade.</p>
+  </header>
+
+  <section class="panel" aria-label="Scan settings">
+    <div class="col">
+      <label class="field" for="ticks">Ticks to scan</label>
+      <div class="row">
+        <input id="ticks" type="number" min="50" max="5000" step="50" value="1000" inputmode="numeric">
+        <button class="preset" type="button" data-ticks="100" aria-pressed="false">100</button>
+        <button class="preset" type="button" data-ticks="500" aria-pressed="false">500</button>
+        <button class="preset" type="button" data-ticks="1000" aria-pressed="true">1000</button>
+        <button class="preset" type="button" data-ticks="3000" aria-pressed="false">3000</button>
+        <button class="preset" type="button" data-ticks="5000" aria-pressed="false">5000</button>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="row" style="justify-content: space-between">
+        <span class="label">Markets</span>
+        <span class="row" style="gap:6px">
+          <button type="button" id="all-on">All</button>
+          <button type="button" id="all-off">None</button>
+        </span>
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="row">
+      <button class="scan-btn" id="scan" type="button">Scan</button>
+      <button class="toggle live-btn" id="live" type="button" aria-pressed="false">Go live</button>
+      <span class="status" id="status" role="status" aria-live="polite">Pick your markets and press Scan.</span>
+    </div>
+
+    <details>
+      <summary>Connection settings</summary>
+      <div class="row">
+        <div class="col">
+          <label class="field" for="appid">Deriv app ID</label>
+          <input id="appid" type="text" value="1089" inputmode="numeric">
+        </div>
+        <span class="note" style="align-self:end">1089 is Deriv's public test ID. Use your own app ID if you register one.</span>
+      </div>
+    </details>
+  </section>
+
+  <section class="panel" id="result-panel" hidden aria-label="Best match">
+    <div class="hero">
+      <div class="digit-badge" id="hero-digit">–</div>
+      <div>
+        <h2 id="hero-market">–<span class="tag" id="hero-tag"></span></h2>
+        <div class="meta" id="hero-meta"></div>
+      </div>
+      <div class="copy">
+        <span class="live-pill" id="live-pill" hidden><i></i>LIVE</span>
+        <button type="button" id="copy">Copy digit</button>
+        <button type="button" class="toggle" id="hold" aria-pressed="false">Hold this pick</button>
+      </div>
+    </div>
+    <p class="note" id="hero-note"></p>
+  </section>
+
+  <details class="more" id="more" hidden>
+  <summary>All markets and charts</summary>
+  <section class="panel" id="table-panel" hidden aria-label="All markets">
+    <div class="row" style="justify-content: space-between">
+      <h2>All markets, strongest first</h2>
+      <span class="note">Tap a row to see its digits below.</span>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Market</th>
+            <th>Digit</th>
+            <th class="num">Share</th>
+            <th class="num">Last 100</th>
+            <th class="num">Gap</th>
+            <th class="num">Strength</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p class="note">Share is how often the digit appeared across the scan. Last 100 is its share in the newest 100 ticks. Gap is how many ticks ago it last appeared. Strength is how far the share sits above the 10% you would expect by chance, in standard deviations (z-score). Under about 2 is ordinary noise.</p>
+  </section>
+
+  <section class="panel" id="chart-panel" hidden aria-label="Digit distribution">
+    <div class="row" style="justify-content: space-between">
+      <h2 id="chart-title">Digit distribution</h2>
+      <div class="legend">
+        <span><i style="background:var(--bar)"></i>Full scan</span>
+        <span><i style="background:var(--bar-recent)"></i>Last 100 ticks</span>
+      </div>
+    </div>
+    <div class="chart" id="chart"></div>
+    <div class="labels" id="labels"></div>
+    <div class="stats" id="stats"></div>
+  </section>
+  </details>
+
+  <p class="note">Digits on the Volatility indices are random. A digit that has been frequent is not more likely on the next tick, so treat a high score as a lead to test on a demo account first.</p>
+</div>
+
+<script>
+"use strict";
+
+var MARKETS = [
+  { id: "R_10",     name: "Volatility 10 Index",       def: true },
+  { id: "R_25",     name: "Volatility 25 Index",       def: true },
+  { id: "R_50",     name: "Volatility 50 Index",       def: true },
+  { id: "R_75",     name: "Volatility 75 Index",       def: true },
+  { id: "R_100",    name: "Volatility 100 Index",      def: true },
+  { id: "1HZ10V",   name: "Volatility 10 (1s) Index",  def: true },
+  { id: "1HZ25V",   name: "Volatility 25 (1s) Index",  def: true },
+  { id: "1HZ50V",   name: "Volatility 50 (1s) Index",  def: true },
+  { id: "1HZ75V",   name: "Volatility 75 (1s) Index",  def: true },
+  { id: "1HZ100V",  name: "Volatility 100 (1s) Index", def: true },
+  { id: "1HZ15V",   name: "Volatility 15 (1s) Index",  def: false },
+  { id: "1HZ30V",   name: "Volatility 30 (1s) Index",  def: false },
+  { id: "1HZ90V",   name: "Volatility 90 (1s) Index",  def: false }
+];
+var RECENT = 100;
+var MAX_TICKS = 5000;
+
+function $(id) { return document.getElementById(id); }
+function nameOf(id) {
+  for (var i = 0; i < MARKETS.length; i++) if (MARKETS[i].id === id) return MARKETS[i].name;
+  return id;
+}
+
+/* ---------- analysis ---------- */
+
+function decimalsOf(s) {
+  var str = String(s);
+  var i = str.indexOf(".");
+  return i < 0 ? 0 : str.length - i - 1;
+}
+
+function lastDigits(prices, pip) {
+  var places = (typeof pip === "number" && isFinite(pip) && pip >= 0 && pip <= 8) ? pip : 0;
+  if (places === 0 && !(typeof pip === "number")) {
+    for (var k = 0; k < prices.length; k++) places = Math.max(places, decimalsOf(prices[k]));
+  }
+  var out = [];
+  for (var i = 0; i < prices.length; i++) {
+    var t = Number(prices[i]).toFixed(places);
+    out.push(t.charCodeAt(t.length - 1) - 48);
+  }
+  return out;
+}
+
+function analyse(prices, pip) { return analyseDigits(lastDigits(prices, pip)); }
+
+function analyseDigits(digits) {
+  var n = digits.length;
+  if (n === 0) return { error: "No ticks returned" };
+  var counts = [0,0,0,0,0,0,0,0,0,0];
+  var recentCounts = [0,0,0,0,0,0,0,0,0,0];
+  var lastSeen = [-1,-1,-1,-1,-1,-1,-1,-1,-1,-1];
+  var rStart = Math.max(0, n - RECENT);
+  for (var i = 0; i < n; i++) {
+    counts[digits[i]]++;
+    lastSeen[digits[i]] = i;
+    if (i >= rStart) recentCounts[digits[i]]++;
+  }
+  var rN = n - rStart;
+  var sd = Math.sqrt(0.1 * 0.9 / n);
+  var list = [];
+  for (var d = 0; d < 10; d++) {
+    var p = counts[d] / n;
+    list.push({
+      digit: d,
+      count: counts[d],
+      pct: p * 100,
+      recentPct: recentCounts[d] / rN * 100,
+      gap: lastSeen[d] < 0 ? n : (n - 1 - lastSeen[d]),
+      z: (p - 0.1) / sd
+    });
+  }
+  var best = list[0];
+  for (var j = 1; j < 10; j++) {
+    if (list[j].count > best.count || (list[j].count === best.count && list[j].recentPct > best.recentPct)) best = list[j];
+  }
+  return { n: n, recentN: rN, digits: list, best: best, last: digits[n - 1] };
+}
+
+/* ---------- scanning ---------- */
+
+function scanMarkets(symbols, count, appId, onProgress) {
+  return new Promise(function (resolve) {
+    var out = {};
+    var done = false;
+    var connError = "";
+    var ws;
+    var timer;
+
+    function finish() {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch (e) {}
+      symbols.forEach(function (s) {
+        if (!out[s]) out[s] = { error: connError || "No response from Deriv" };
+      });
+      resolve(out);
+    }
+
+    try {
+      ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=" + encodeURIComponent(appId));
+    } catch (e) {
+      connError = "Could not open a connection";
+      finish();
+      return;
+    }
+    timer = setTimeout(finish, 25000);
+
+    ws.onopen = function () {
+      symbols.forEach(function (s, i) {
+        ws.send(JSON.stringify({
+          ticks_history: s,
+          adjust_start_time: 1,
+          count: count,
+          end: "latest",
+          style: "ticks",
+          req_id: i + 1
+        }));
+      });
+    };
+    ws.onmessage = function (ev) {
+      var m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      var sym = symbols[(m.req_id || 0) - 1];
+      if (!sym) return;
+      if (m.error) {
+        out[sym] = { error: m.error.message || "Deriv returned an error" };
+      } else if (m.history && m.history.prices) {
+        out[sym] = analyse(m.history.prices, m.pip_size);
+      } else {
+        return;
+      }
+      onProgress(Object.keys(out).length, symbols.length);
+      if (Object.keys(out).length === symbols.length) finish();
+    };
+    ws.onerror = function () {
+      connError = "Connection to Deriv failed. Check your internet and the app ID.";
+    };
+    ws.onclose = function () { finish(); };
+  });
+}
+
+/* ---------- state + rendering ---------- */
+
+var results = {};
+var ranked = [];
+var selected = null;
+
+function fmt(x, d) { return Number(x).toFixed(d); }
+
+function strengthTag(z) {
+  if (z >= 3) return { text: "Strong", cls: "strong" };
+  if (z >= 2) return { text: "Notable", cls: "strong" };
+  return { text: "Within noise", cls: "noise" };
+}
+
+function render(count) {
+  ranked = [];
+  Object.keys(results).forEach(function (id) {
+    var r = results[id];
+    ranked.push({ id: id, r: r, z: r.error ? -Infinity : r.best.z });
+  });
+  ranked.sort(function (a, b) { return b.z - a.z; });
+
+  var top = ranked.filter(function (x) { return !x.r.error; })[0];
+  if (!top) {
+    $("result-panel").hidden = true;
+    $("table-panel").hidden = false;
+    $("chart-panel").hidden = true;
+    renderRows();
+    return;
+  }
+
+  choosePick(top);
+  var pr = results[pick.id];
+  var b = pr.digits[pick.digit];
+  var tag = strengthTag(b.z);
+  $("result-panel").hidden = false;
+  $("hero-digit").textContent = b.digit;
+  $("hero-market").firstChild.nodeValue = nameOf(pick.id);
+  var t = $("hero-tag");
+  t.textContent = tag.text;
+  t.className = "tag " + tag.cls;
+  $("hero-meta").textContent = fmt(b.pct, 1) + "% of " + pr.n.toLocaleString() + " ticks  |  last 100: " + fmt(b.recentPct, 0) + "%  |  z " + fmt(b.z, 2);
+  $("hero-note").textContent = "Open Deriv Bot, choose " + nameOf(pick.id) + ", set the Matches prediction to " + b.digit + ", then run it yourself.";
+  $("copy").dataset.digit = b.digit;
+
+  if (pick.id !== lastPickId) { selected = pick.id; lastPickId = pick.id; }
+  $("more").hidden = false;
+  $("table-panel").hidden = false;
+  renderRows();
+  select(selected && results[selected] && !results[selected].error ? selected : pick.id);
+}
+
+function renderRows() {
+  var tb = $("rows");
+  tb.innerHTML = "";
+  ranked.forEach(function (x) {
+    var tr = document.createElement("tr");
+    tr.dataset.id = x.id;
+    tr.tabIndex = 0;
+    if (x.r.error) {
+      tr.innerHTML = "<td>" + nameOf(x.id) + "</td><td class='err-cell' colspan='5'></td>";
+      tr.lastChild.textContent = x.r.error;
+    } else {
+      var b = x.r.best;
+      tr.innerHTML =
+        "<td>" + nameOf(x.id) + "</td>" +
+        "<td class='digit-cell'>" + b.digit + "</td>" +
+        "<td class='num'>" + fmt(b.pct, 1) + "%</td>" +
+        "<td class='num'>" + fmt(b.recentPct, 0) + "%</td>" +
+        "<td class='num'>" + b.gap + "</td>" +
+        "<td class='num'>" + fmt(b.z, 2) + "</td>";
+    }
+    tr.addEventListener("click", function () { if (!x.r.error) select(x.id); });
+    tr.addEventListener("keydown", function (e) {
+      if ((e.key === "Enter" || e.key === " ") && !x.r.error) { e.preventDefault(); select(x.id); }
+    });
+    tb.appendChild(tr);
+  });
+}
+
+function select(id) {
+  selected = id;
+  var rows = $("rows").children;
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].setAttribute("aria-selected", rows[i].dataset.id === id ? "true" : "false");
+  }
+  var r = results[id];
+  if (!r || r.error) return;
+  $("chart-panel").hidden = false;
+  $("chart-title").textContent = nameOf(id) + " digit distribution";
+
+  var maxPct = 0;
+  r.digits.forEach(function (d) { maxPct = Math.max(maxPct, d.pct, d.recentPct); });
+  var scaleMax = Math.max(15, Math.ceil(maxPct / 5) * 5);
+  var plotH = 200;
+
+  var chart = $("chart");
+  chart.innerHTML = "";
+  var base = document.createElement("div");
+  base.className = "base";
+  base.style.bottom = (10 / scaleMax * plotH) + "px";
+  base.innerHTML = "<span>10% expected</span>";
+  chart.appendChild(base);
+
+  var labels = $("labels");
+  labels.innerHTML = "";
+
+  r.digits.forEach(function (d) {
+    var col = document.createElement("div");
+    col.className = "dcol";
+    var pct = document.createElement("div");
+    pct.className = "pct";
+    pct.textContent = fmt(d.pct, 1);
+    var bars = document.createElement("div");
+    bars.className = "bars";
+    var full = document.createElement("div");
+    full.className = "bar" + (d.digit === r.best.digit ? " top" : "");
+    full.style.height = (d.pct / scaleMax * plotH) + "px";
+    full.title = "Digit " + d.digit + ": " + d.count + " of " + r.n + " (" + fmt(d.pct, 2) + "%)";
+    var rec = document.createElement("div");
+    rec.className = "bar recent";
+    rec.style.height = (d.recentPct / scaleMax * plotH) + "px";
+    rec.title = "Digit " + d.digit + " in last " + r.recentN + ": " + fmt(d.recentPct, 0) + "%";
+    bars.appendChild(full);
+    bars.appendChild(rec);
+    col.appendChild(pct);
+    col.appendChild(bars);
+    chart.appendChild(col);
+
+    var lab = document.createElement("div");
+    lab.innerHTML = d.digit + "<small>z " + fmt(d.z, 1) + "</small>";
+    labels.appendChild(lab);
+  });
+
+  var b = r.best;
+  var sorted = r.digits.slice().sort(function (a, c) { return a.count - c.count; });
+  var stats = $("stats");
+  stats.innerHTML = "";
+  [
+    ["Ticks scanned", r.n.toLocaleString()],
+    ["Top digit", b.digit + " (" + fmt(b.pct, 1) + "%)"],
+    ["Least seen", sorted[0].digit + " (" + fmt(sorted[0].pct, 1) + "%)"],
+    ["Last tick digit", String(r.last)],
+    ["Top digit gap", b.gap + " ticks"]
+  ].forEach(function (s) {
+    var d = document.createElement("div");
+    d.className = "stat";
+    d.innerHTML = "<span></span><b></b>";
+    d.firstChild.textContent = s[0];
+    d.lastChild.textContent = s[1];
+    stats.appendChild(d);
+  });
+}
+
+/* ---------- live mode + single pick ---------- */
+
+var pick = null;
+var lastPickId = null;
+var hold = false;
+var live = false;
+var liveWs = null;
+var liveState = {};
+var liveDirty = false;
+var liveTimer = null;
+var retryTimer = null;
+
+function choosePick(top) {
+  var cur = null;
+  if (pick && results[pick.id] && !results[pick.id].error) cur = results[pick.id].digits[pick.digit];
+  // Keep the current pick when held, or in live mode unless a rival is clearly stronger (stops flicker).
+  if (cur && (hold || (live && top.r.best.z < cur.z + 0.5))) return;
+  pick = { id: top.id, digit: top.r.best.digit };
+}
+
+function rebuildLive() {
+  Object.keys(liveState).forEach(function (s) {
+    var st = liveState[s];
+    results[s] = st.error ? { error: st.error } : analyseDigits(st.digits);
+  });
+}
+
+function connectLive(symbols, count, appId) {
+  var ws;
+  try {
+    ws = new WebSocket("wss://ws.derivws.com/websockets/v3?app_id=" + encodeURIComponent(appId));
+  } catch (e) {
+    setStatus("Could not open a connection to Deriv.", true);
+    return;
+  }
+  liveWs = ws;
+  ws.onopen = function () {
+    symbols.forEach(function (s, i) {
+      ws.send(JSON.stringify({
+        ticks_history: s, adjust_start_time: 1, count: count, end: "latest", style: "ticks", req_id: i + 1
+      }));
+    });
+  };
+  ws.onmessage = function (ev) {
+    var m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.history && m.history.prices) {
+      var sym = symbols[(m.req_id || 0) - 1];
+      if (!sym) return;
+      liveState[sym] = { digits: lastDigits(m.history.prices, m.pip_size), pip: m.pip_size };
+      // Start streaming only after the history is in, so no ticks are missed or doubled.
+      ws.send(JSON.stringify({ ticks: sym, subscribe: 1 }));
+      liveDirty = true;
+    } else if (m.tick) {
+      var st = liveState[m.tick.symbol];
+      if (!st || st.error) return;
+      var pip = (typeof m.tick.pip_size === "number") ? m.tick.pip_size : st.pip;
+      st.digits.push(lastDigits([m.tick.quote], pip)[0]);
+      if (st.digits.length > count) st.digits.shift();
+      liveDirty = true;
+    } else if (m.error) {
+      var es = symbols[(m.req_id || 0) - 1];
+      if (es) { liveState[es] = { error: m.error.message || "Deriv returned an error" }; liveDirty = true; }
+    }
+  };
+  ws.onerror = function () {
+    setStatus("Connection problem. Retrying...", true);
+  };
+  ws.onclose = function () {
+    if (!live) return;
+    setStatus("Connection lost. Reconnecting...", true);
+    retryTimer = setTimeout(function () { if (live) connectLive(symbols, count, appId); }, 3000);
+  };
+}
+
+function setLiveUi(on) {
+  $("live").textContent = on ? "Stop live" : "Go live";
+  $("live").setAttribute("aria-pressed", on ? "true" : "false");
+  $("scan").disabled = on;
+  $("live-pill").hidden = !on;
+}
+
+function startLive() {
+  var symbols = selectedSymbols();
+  var count = Math.round(Number($("ticks").value));
+  var appId = $("appid").value.trim() || "1089";
+  if (!symbols.length) { setStatus("Select at least one market.", true); return; }
+  if (!isFinite(count) || count < 50) { setStatus("Enter at least 50 ticks.", true); return; }
+  if (count > MAX_TICKS) { count = MAX_TICKS; $("ticks").value = MAX_TICKS; }
+  syncPresets();
+  saveSettings();
+
+  live = true;
+  liveState = {};
+  results = {};
+  liveDirty = false;
+  setLiveUi(true);
+  setStatus("Live: loading " + symbols.length + " markets...");
+  connectLive(symbols, count, appId);
+  liveTimer = setInterval(function () {
+    if (!liveDirty) return;
+    liveDirty = false;
+    rebuildLive();
+    render();
+    setStatus("Live. Updated " + new Date().toLocaleTimeString() + ". Window: last " + count.toLocaleString() + " ticks per market.");
+  }, 1000);
+}
+
+function stopLive() {
+  live = false;
+  clearInterval(liveTimer);
+  clearTimeout(retryTimer);
+  if (liveWs) { liveWs.onclose = null; try { liveWs.close(); } catch (e) {} liveWs = null; }
+  setLiveUi(false);
+  setStatus("Live stopped. The last result stays on screen.");
+}
+
+/* ---------- controls ---------- */
+
+function buildChips() {
+  var saved = null;
+  try { saved = JSON.parse(localStorage.getItem("dds-markets")); } catch (e) {}
+  var box = $("chips");
+  MARKETS.forEach(function (m) {
+    var lab = document.createElement("label");
+    lab.className = "chip";
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = m.id;
+    cb.checked = Array.isArray(saved) ? saved.indexOf(m.id) >= 0 : m.def;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(m.name));
+    box.appendChild(lab);
+  });
+}
+function selectedSymbols() {
+  var out = [];
+  var cbs = $("chips").querySelectorAll("input");
+  for (var i = 0; i < cbs.length; i++) if (cbs[i].checked) out.push(cbs[i].value);
+  return out;
+}
+function syncPresets() {
+  var v = String($("ticks").value);
+  var ps = document.querySelectorAll(".preset");
+  for (var i = 0; i < ps.length; i++) ps[i].setAttribute("aria-pressed", ps[i].dataset.ticks === v ? "true" : "false");
+}
+function saveSettings() {
+  try {
+    localStorage.setItem("dds-markets", JSON.stringify(selectedSymbols()));
+    localStorage.setItem("dds-ticks", $("ticks").value);
+    localStorage.setItem("dds-appid", $("appid").value);
+  } catch (e) {}
+}
+function loadSettings() {
+  try {
+    var t = localStorage.getItem("dds-ticks");
+    if (t) $("ticks").value = t;
+    var a = localStorage.getItem("dds-appid");
+    if (a) $("appid").value = a;
+  } catch (e) {}
+}
+
+function setStatus(msg, isErr) {
+  var s = $("status");
+  s.textContent = msg;
+  s.className = "status" + (isErr ? " err" : "");
+}
+
+function doScan() {
+  var symbols = selectedSymbols();
+  var count = Math.round(Number($("ticks").value));
+  var appId = $("appid").value.trim() || "1089";
+  if (!symbols.length) { setStatus("Select at least one market.", true); return; }
+  if (!isFinite(count) || count < 50) { setStatus("Enter at least 50 ticks.", true); return; }
+  if (count > MAX_TICKS) { count = MAX_TICKS; $("ticks").value = MAX_TICKS; }
+  syncPresets();
+  saveSettings();
+
+  var btn = $("scan");
+  btn.disabled = true;
+  btn.textContent = "Scanning...";
+  setStatus("Scanning 0 of " + symbols.length + " markets...");
+
+  scanMarkets(symbols, count, appId, function (done, total) {
+    setStatus("Scanning " + done + " of " + total + " markets...");
+  }).then(function (out) {
+    results = out;
+    if (!hold) pick = null;
+    render();
+    var ok = Object.keys(out).filter(function (k) { return !out[k].error; }).length;
+    var stamp = new Date().toLocaleTimeString();
+    if (ok === 0) {
+      setStatus("No market returned data. " + (out[symbols[0]].error || ""), true);
+    } else {
+      setStatus("Scanned " + ok + " of " + symbols.length + " markets at " + stamp + ".");
+    }
+    btn.disabled = false;
+    btn.textContent = "Scan again";
+  });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  loadSettings();
+  buildChips();
+  syncPresets();
+
+  $("scan").addEventListener("click", doScan);
+  $("live").addEventListener("click", function () { if (live) stopLive(); else startLive(); });
+  $("hold").addEventListener("click", function () {
+    hold = !hold;
+    $("hold").setAttribute("aria-pressed", hold ? "true" : "false");
+    $("hold").textContent = hold ? "Holding" : "Hold this pick";
+  });
+  $("ticks").addEventListener("input", syncPresets);
+  document.querySelectorAll(".preset").forEach(function (p) {
+    p.addEventListener("click", function () { $("ticks").value = p.dataset.ticks; syncPresets(); });
+  });
+  $("all-on").addEventListener("click", function () {
+    $("chips").querySelectorAll("input").forEach(function (c) { c.checked = true; });
+  });
+  $("all-off").addEventListener("click", function () {
+    $("chips").querySelectorAll("input").forEach(function (c) { c.checked = false; });
+  });
+  $("copy").addEventListener("click", function () {
+    var btn = $("copy");
+    var digit = btn.dataset.digit;
+    function ok() { btn.textContent = "Copied " + digit; setTimeout(function () { btn.textContent = "Copy digit"; }, 1500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(digit).then(ok, function () {});
+    }
+  });
+});
+</script>
+</body>
+</html>
